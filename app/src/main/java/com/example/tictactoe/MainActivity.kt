@@ -7,26 +7,45 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 
+/**
+ * MainActivity for the Tic Tac Toe game.
+ * 
+ * This activity manages a two-player Tic Tac Toe game where players take turns
+ * placing X and O marks on a 3x3 grid. The game detects wins and draws, and
+ * provides a play again functionality.
+ */
 class MainActivity : AppCompatActivity() {
     
-    private var currentPlayer = 'X' // X goes first
-    private var gameBoard = Array(3) { CharArray(3) { ' ' } }
-    private var gameActive = true
+    companion object {
+        private const val BOARD_SIZE = 3
+        private const val PLAYER_X = 'X'
+        private const val PLAYER_O = 'O'
+        private const val EMPTY_CELL = ' '
+    }
     
-    private lateinit var buttons: Array<Array<Button>>
-    private lateinit var statusText: TextView
-    private lateinit var playAgainButton: Button
+    private var activePlayer = PLAYER_X // X goes first
+    private var gameBoard = Array(BOARD_SIZE) { CharArray(BOARD_SIZE) { EMPTY_CELL } }
+    private var isGameActive = true
+    
+    private lateinit var gameButtons: Array<Array<Button>>
+    private lateinit var statusTextView: TextView
+    private lateinit var playAgainBtn: Button
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         
-        // Initialize UI components
-        statusText = findViewById(R.id.statusText)
-        playAgainButton = findViewById(R.id.playAgainButton)
+        initializeViews()
+        setupButtonListeners()
+        updateStatusDisplay()
+    }
+    
+    private fun initializeViews() {
+        statusTextView = findViewById(R.id.statusText)
+        playAgainBtn = findViewById(R.id.playAgainButton)
         
         // Initialize button grid
-        buttons = arrayOf(
+        gameButtons = arrayOf(
             arrayOf(
                 findViewById(R.id.button00),
                 findViewById(R.id.button01),
@@ -43,95 +62,125 @@ class MainActivity : AppCompatActivity() {
                 findViewById(R.id.button22)
             )
         )
-        
-        // Set click listeners for all buttons
-        for (i in 0..2) {
-            for (j in 0..2) {
-                buttons[i][j].setOnClickListener {
-                    onCellClick(i, j)
+    }
+    
+    private fun setupButtonListeners() {
+        // Set click listeners for all game buttons
+        for (row in 0 until BOARD_SIZE) {
+            for (col in 0 until BOARD_SIZE) {
+                gameButtons[row][col].setOnClickListener {
+                    handleCellClick(row, col)
                 }
             }
         }
         
-        // Play again button
-        playAgainButton.setOnClickListener {
+        // Play again button listener
+        playAgainBtn.setOnClickListener {
             resetGame()
         }
-        
-        updateStatusText()
     }
     
-    private fun onCellClick(row: Int, col: Int) {
-        if (!gameActive || gameBoard[row][col] != ' ') {
+    /**
+     * Handles a cell click on the game board.
+     * 
+     * @param row The row index of the clicked cell (0-2)
+     * @param col The column index of the clicked cell (0-2)
+     */
+    private fun handleCellClick(row: Int, col: Int) {
+        if (!isGameActive || gameBoard[row][col] != EMPTY_CELL) {
             return
         }
         
-        // Update game board
-        gameBoard[row][col] = currentPlayer
-        buttons[row][col].text = currentPlayer.toString()
-        buttons[row][col].setTextColor(
-            if (currentPlayer == 'X') 
-                resources.getColor(R.color.x_color, theme)
-            else 
-                resources.getColor(R.color.o_color, theme)
-        )
-        buttons[row][col].isEnabled = false
+        // Update game board and UI
+        gameBoard[row][col] = activePlayer
+        updateButtonDisplay(row, col)
         
-        // Check for win or draw
-        if (checkWinner()) {
-            gameActive = false
-            showGameEndDialog(getWinnerMessage())
-            playAgainButton.visibility = View.VISIBLE
-        } else if (isBoardFull()) {
-            gameActive = false
-            showGameEndDialog(getString(R.string.game_draw))
-            playAgainButton.visibility = View.VISIBLE
-        } else {
-            // Switch player
-            currentPlayer = if (currentPlayer == 'X') 'O' else 'X'
-            updateStatusText()
+        // Check game state
+        when {
+            hasWinner() -> {
+                endGameWithWinner()
+            }
+            isBoardFull() -> {
+                endGameWithDraw()
+            }
+            else -> {
+                switchPlayer()
+                updateStatusDisplay()
+            }
         }
     }
     
-    private fun checkWinner(): Boolean {
+    private fun updateButtonDisplay(row: Int, col: Int) {
+        val button = gameButtons[row][col]
+        button.text = activePlayer.toString()
+        button.setTextColor(
+            resources.getColor(
+                if (activePlayer == PLAYER_X) R.color.x_color else R.color.o_color,
+                theme
+            )
+        )
+        button.isEnabled = false
+    }
+    
+    /**
+     * Checks if there is a winner on the current board.
+     * 
+     * @return true if a player has three marks in a row (horizontal, vertical, or diagonal)
+     */
+    private fun hasWinner(): Boolean {
         // Check rows
-        for (i in 0..2) {
-            if (gameBoard[i][0] != ' ' &&
-                gameBoard[i][0] == gameBoard[i][1] &&
-                gameBoard[i][1] == gameBoard[i][2]) {
+        for (row in 0 until BOARD_SIZE) {
+            if (isWinningLine(
+                    gameBoard[row][0],
+                    gameBoard[row][1],
+                    gameBoard[row][2]
+                )
+            ) {
                 return true
             }
         }
         
         // Check columns
-        for (j in 0..2) {
-            if (gameBoard[0][j] != ' ' &&
-                gameBoard[0][j] == gameBoard[1][j] &&
-                gameBoard[1][j] == gameBoard[2][j]) {
+        for (col in 0 until BOARD_SIZE) {
+            if (isWinningLine(
+                    gameBoard[0][col],
+                    gameBoard[1][col],
+                    gameBoard[2][col]
+                )
+            ) {
                 return true
             }
         }
         
-        // Check diagonals
-        if (gameBoard[0][0] != ' ' &&
-            gameBoard[0][0] == gameBoard[1][1] &&
-            gameBoard[1][1] == gameBoard[2][2]) {
+        // Check main diagonal (top-left to bottom-right)
+        if (isWinningLine(gameBoard[0][0], gameBoard[1][1], gameBoard[2][2])) {
             return true
         }
         
-        if (gameBoard[0][2] != ' ' &&
-            gameBoard[0][2] == gameBoard[1][1] &&
-            gameBoard[1][1] == gameBoard[2][0]) {
+        // Check anti-diagonal (top-right to bottom-left)
+        if (isWinningLine(gameBoard[0][2], gameBoard[1][1], gameBoard[2][0])) {
             return true
         }
         
         return false
     }
     
+    /**
+     * Checks if three cells form a winning line (all same player and not empty).
+     * 
+     * @param cell1 First cell in the line
+     * @param cell2 Second cell in the line
+     * @param cell3 Third cell in the line
+     * @return true if all three cells have the same non-empty value
+     */
+    private fun isWinningLine(cell1: Char, cell2: Char, cell3: Char): Boolean {
+        return cell1 != EMPTY_CELL && cell1 == cell2 && cell2 == cell3
+    }
+    
     private fun isBoardFull(): Boolean {
-        for (i in 0..2) {
-            for (j in 0..2) {
-                if (gameBoard[i][j] == ' ') {
+        for (row in 0 until BOARD_SIZE) {
+            for (col in 0 until BOARD_SIZE) {
+                if (gameBoard[row][col] == EMPTY_CELL) {
                     return false
                 }
             }
@@ -139,12 +188,25 @@ class MainActivity : AppCompatActivity() {
         return true
     }
     
-    private fun getWinnerMessage(): String {
-        return if (currentPlayer == 'X') {
+    private fun endGameWithWinner() {
+        isGameActive = false
+        val winnerMessage = if (activePlayer == PLAYER_X) {
             getString(R.string.player_x_wins)
         } else {
             getString(R.string.player_o_wins)
         }
+        showGameEndDialog(winnerMessage)
+        playAgainBtn.visibility = View.VISIBLE
+    }
+    
+    private fun endGameWithDraw() {
+        isGameActive = false
+        showGameEndDialog(getString(R.string.game_draw))
+        playAgainBtn.visibility = View.VISIBLE
+    }
+    
+    private fun switchPlayer() {
+        activePlayer = if (activePlayer == PLAYER_X) PLAYER_O else PLAYER_X
     }
     
     private fun showGameEndDialog(message: String) {
@@ -158,9 +220,9 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
     
-    private fun updateStatusText() {
-        if (gameActive) {
-            statusText.text = if (currentPlayer == 'X') {
+    private fun updateStatusDisplay() {
+        if (isGameActive) {
+            statusTextView.text = if (activePlayer == PLAYER_X) {
                 getString(R.string.player_x_turn)
             } else {
                 getString(R.string.player_o_turn)
@@ -170,24 +232,25 @@ class MainActivity : AppCompatActivity() {
     
     private fun resetGame() {
         // Reset game state
-        currentPlayer = 'X'
-        gameActive = true
-        gameBoard = Array(3) { CharArray(3) { ' ' } }
+        activePlayer = PLAYER_X
+        isGameActive = true
+        gameBoard = Array(BOARD_SIZE) { CharArray(BOARD_SIZE) { EMPTY_CELL } }
         
         // Reset all buttons
-        for (i in 0..2) {
-            for (j in 0..2) {
-                buttons[i][j].text = ""
-                buttons[i][j].isEnabled = true
-                buttons[i][j].setTextColor(resources.getColor(R.color.x_color, theme))
+        for (row in 0 until BOARD_SIZE) {
+            for (col in 0 until BOARD_SIZE) {
+                val button = gameButtons[row][col]
+                button.text = ""
+                button.isEnabled = true
+                button.setTextColor(resources.getColor(R.color.x_color, theme))
             }
         }
         
         // Hide play again button
-        playAgainButton.visibility = View.GONE
+        playAgainBtn.visibility = View.GONE
         
-        // Update status text
-        updateStatusText()
+        // Update status display
+        updateStatusDisplay()
     }
 }
 
